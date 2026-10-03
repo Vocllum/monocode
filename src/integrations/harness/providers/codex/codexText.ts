@@ -32,6 +32,7 @@ type LiveText = {
   cwd: string;
   providerAccountId?: string;
   threadId: string;
+  retainThread?: boolean;
   model: string;
   effort: string;
   serviceTier?: string;
@@ -161,7 +162,6 @@ async function promptOnLive(input: {
       })
     : null;
 
-  let retainThread = false;
   try {
     const turnPromise = new Promise<void>((resolve, reject) => {
       session.turnDone = resolve;
@@ -194,8 +194,6 @@ async function promptOnLive(input: {
       ...(abortPromise ? [abortPromise] : []),
     ]);
 
-    // Preserve thread if the caller requested a persistent thread (e.g. BTW threads)
-    retainThread = Boolean(input.threadId);
     return session.output;
   } catch (error) {
     await session.rpc
@@ -210,7 +208,7 @@ async function promptOnLive(input: {
     session.collecting = false;
     session.turnDone = null;
     session.turnFailed = null;
-    await dropLive({ retainThread });
+    await dropLive();
   }
 }
 async function ensureLive(input: {
@@ -408,12 +406,14 @@ async function openThread(
   if (!threadId) throw new Error("Codex did not return a thread id");
   session.cwd = cwd;
   session.threadId = threadId;
+  session.retainThread = Boolean(requestedThreadId);
 }
 async function dropLive(options?: { retainThread?: boolean }): Promise<void> {
   const current = live;
   live = null;
   if (current) {
-    if (current.threadId && !current.closed && !options?.retainThread) {
+    const shouldRetain = options?.retainThread ?? current.retainThread;
+    if (current.threadId && !current.closed && !shouldRetain) {
       await current.rpc
         .request(
           "thread/delete",
