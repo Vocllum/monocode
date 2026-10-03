@@ -410,6 +410,11 @@ async function dropLive(): Promise<void> {
   const current = live;
   live = null;
   if (current) {
+    if (current.threadId && !current.closed) {
+      await current.rpc
+        .request("thread/delete", { threadId: current.threadId })
+        .catch(() => undefined);
+    }
     current.closed = true;
     current.rpc.close();
   }
