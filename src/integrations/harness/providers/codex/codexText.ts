@@ -161,6 +161,7 @@ async function promptOnLive(input: {
       })
     : null;
 
+  let retainThread = false;
   try {
     const turnPromise = new Promise<void>((resolve, reject) => {
       session.turnDone = resolve;
@@ -193,6 +194,8 @@ async function promptOnLive(input: {
       ...(abortPromise ? [abortPromise] : []),
     ]);
 
+    // Preserve thread if the caller requested a persistent thread (e.g. BTW threads)
+    retainThread = Boolean(input.threadId);
     return session.output;
   } catch (error) {
     await session.rpc
@@ -207,7 +210,7 @@ async function promptOnLive(input: {
     session.collecting = false;
     session.turnDone = null;
     session.turnFailed = null;
-    await dropLive();
+    await dropLive({ retainThread });
   }
 }
 async function ensureLive(input: {
@@ -406,13 +409,17 @@ async function openThread(
   session.cwd = cwd;
   session.threadId = threadId;
 }
-async function dropLive(): Promise<void> {
+async function dropLive(options?: { retainThread?: boolean }): Promise<void> {
   const current = live;
   live = null;
   if (current) {
-    if (current.threadId && !current.closed) {
+    if (current.threadId && !current.closed && !options?.retainThread) {
       await current.rpc
-        .request("thread/delete", { threadId: current.threadId })
+        .request(
+          "thread/delete",
+          { threadId: current.threadId },
+          INIT_TIMEOUT_MS,
+        )
         .catch(() => undefined);
     }
     current.closed = true;
